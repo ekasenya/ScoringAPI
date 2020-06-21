@@ -2,13 +2,15 @@
 # -*- coding: utf-8 -*-
 
 import abc
-import json
 import datetime
-import logging
 import hashlib
+import json
+import logging
 import uuid
-from optparse import OptionParser
+import re
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from optparse import OptionParser
+from weakref import WeakKeyDictionary
 
 SALT = "Otus"
 ADMIN_LOGIN = "admin"
@@ -36,50 +38,139 @@ GENDERS = {
 }
 
 
-class CharField(object):
-    pass
+class BaseField(object):
+    def __init__(self, required=True, nullable=False):
+        self.required = required
+        self.nullable = nullable
+        self.data = WeakKeyDictionary()
+
+    def __get__(self, instance, cls):
+        return self.data.get(instance)
+
+    def __set__(self, instance, value):
+        self.data[instance] = value
 
 
-class ArgumentsField(object):
-    pass
+class ArgumentsField(BaseField):
+    def __set__(self, instance, value):
+        try:
+            json_obj = json.loads(json.dumps(value))
+        except ValueError:
+            raise TypeError("{} is not a valid json".format(str(value)))
+
+        super(BaseField, self).__set__(instance, value)
+
+
+class CharField(BaseField):
+    def check(self, value):
+        if not isinstance(value, str):
+            raise TypeError('{} is not a str'.format(value))
+
+    def __set__(self, instance, value):
+        self.check(value)
+        super(CharField, self).__set__(instance, value)
 
 
 class EmailField(CharField):
-    pass
+    EMAIL_PATTERN = r'^[a-z][\w\-\.]*@([a-z][\w\-]+\.)+[a-z]{2,4}$'
+
+    def check(self, value):
+        super(EmailField, self).check(value)
+
+        if not re.match(self.EMAIL_PATTERN, value):
+            raise TypeError('{} is not a valid email'.format(value))
+
+    def __set__(self, instance, value):
+        self.check(value)
+        super(CharField, self).__set__(instance, value)
 
 
-class PhoneField(object):
-    pass
+class PhoneField(BaseField):
+    PHONE_PATTERN = r'^\d+$'
+
+    def __set__(self, instance, value):
+        if not re.match(self.EMAIL_PATTERN, value):
+            raise TypeError('{} is not a valid phone'.format(value))
+        super(BaseField, self).__set__(instance, value)
 
 
-class DateField(object):
-    pass
+class DateField(BaseField):
+    DATE_PATTERN = r'^\d{2}\.\d{2}\.\d{4}$'
+
+    @staticmethod
+    def get_date(self, value):
+        return datetime.strptime(value, '%d.%m.%Y')
+
+    def check(self, value):
+        if not (isinstance(value, str) & re.match(self.DATE_PATTERN)):
+            raise TypeError('{} is not a valid date'.format(value))
+
+    def __set__(self, instance, value):
+        self.check(value)
+        super(BaseField, self).__set__(instance, self.get_date(value))
 
 
-class BirthDayField(object):
-    pass
+class BirthDayField(DateField):
+    def check(self, value):
+        super(BirthDayField, self).check(value)
+
+        if int(re.split(r'[\.]', value)[2]) < datetime.now().year:
+            raise ValueError('{} is more than 70 years ago'.format(value))
+
+    def __set__(self, instance, value):
+        self.check(value)
+        super(BaseField, self).__set__(instance, self.get_date(value))
 
 
-class GenderField(object):
-    pass
+class GenderField(BaseField):
+    def __set__(self, instance, value):
+        if not (isinstance(value, int) & int(value) in (UNKNOWN, MALE, FEMALE)):
+            raise TypeError('{} is not a valid gender'.format(value))
+        super(CharField, self).__set__(instance, value)
 
 
-class ClientIDsField(object):
-    pass
+class ClientIDsField(BaseField):
+    def __set__(self, instance, value):
+        if not isinstance(value, list):
+            raise TypeError('{} is not a list'.format(value))
+        super(BaseField, self).__set__(instance, value)
 
 
-class ClientsInterestsRequest(object):
+class BaseRequest(metaclass=abc.ABCMeta):
+    @classmethod
+    @abc.abstractmethod
+    def from_dict(cls, arguments):
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def process_request(self):
+        raise NotImplementedError
+
+
+class ClientsInterestsRequest(BaseRequest):
     client_ids = ClientIDsField(required=True)
     date = DateField(required=False, nullable=True)
 
+    def from_dict(cls, arguments):
+        pass
 
-class OnlineScoreRequest(object):
+    def process_request(self):
+        pass
+
+
+class OnlineScoreRequest(BaseRequest):
     first_name = CharField(required=False, nullable=True)
     last_name = CharField(required=False, nullable=True)
     email = EmailField(required=False, nullable=True)
     phone = PhoneField(required=False, nullable=True)
     birthday = BirthDayField(required=False, nullable=True)
     gender = GenderField(required=False, nullable=True)
+
+    def from_dict(cls, arguments):
+        pass
+
+    def process_request(self):
+        pass
 
 
 class MethodRequest(object):
@@ -93,24 +184,58 @@ class MethodRequest(object):
     def is_admin(self):
         return self.login == ADMIN_LOGIN
 
+    @classmethod
+    def from_request(cls, request):
+        try:
+            request_dict = json.loads(json.dumps(request['body']))
+
+            self = cls()
+            self.account = request_dict['account']
+            self.login = request_dict['login']
+            self.token = request_dict['token']
+            self.arguments = request_dict['arguments']
+
+            return self
+        except Exception:
+            return None
+
+    def process_request(self):
+        try:
+            if self.method.upper() == 'ONLINE_SCORE':
+                request = OnlineScoreRequest().fromdict(self.arguments)
+            elif self.method.upper() == 'CLIENTS_INTERESTS':
+                request = ClientsInterestsRequest().fromdict(self.arguments)
+            else:
+                return ERRORS[INVALID_REQUEST], INVALID_REQUEST
+
+        except Exception:
+            return ERRORS[INVALID_REQUEST], INVALID_REQUEST
+
+        return request.process_request()
+
 
 def check_auth(request):
+    sha512 = hashlib.sha512()
     if request.is_admin:
-        digest = hashlib.sha512(datetime.datetime.now().strftime("%Y%m%d%H") + ADMIN_SALT).hexdigest()
+        sha512.update((datetime.datetime.now().strftime("%Y%m%d%H") + ADMIN_SALT).encode('UTF-8'))
     else:
-        digest = hashlib.sha512(request.account + request.login + SALT).hexdigest()
+        sha512.update((request.account + request.login + SALT).encode('UTF-8'))
+
+    digest = sha512.hexdigest()
     if digest == request.token:
         return True
     return False
 
 
 def method_handler(request, ctx, store):
-    print(request)
-    print(ctx)
-    print(store)
+    method_request = MethodRequest().from_request(request)
+    if not method_request:
+        return ERRORS[INVALID_REQUEST], INVALID_REQUEST
 
-    response, code = None, None
-    return response, code
+    if not check_auth(method_request):
+        return ERRORS[FORBIDDEN], FORBIDDEN
+
+    return method_request.process_request()
 
 
 class MainHTTPHandler(BaseHTTPRequestHandler):
