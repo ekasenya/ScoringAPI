@@ -44,11 +44,21 @@ class BaseField(object):
         self.nullable = nullable
         self.data = WeakKeyDictionary()
 
-    def __get__(self, instance, cls):
-        return self.data.get(instance)
+    def __set_name__(self, owner, name):
+        self.name = name
+
+    def __get__(self, instance, owner):
+        if instance is None:
+            return self
+
+        return self.data.get(instance, None)
 
     def __set__(self, instance, value):
+        self.check(value)
         self.data[instance] = value
+
+    def check(self, value):
+        pass
 
 
 class ArgumentsField(BaseField):
@@ -58,17 +68,13 @@ class ArgumentsField(BaseField):
         except ValueError:
             raise TypeError("{} is not a valid json".format(str(value)))
 
-        super(BaseField, self).__set__(instance, value)
+        super(ArgumentsField, self).__set__(instance, value)
 
 
 class CharField(BaseField):
     def check(self, value):
         if not isinstance(value, str):
             raise TypeError('{} is not a str'.format(value))
-
-    def __set__(self, instance, value):
-        self.check(value)
-        super(CharField, self).__set__(instance, value)
 
 
 class EmailField(CharField):
@@ -80,18 +86,13 @@ class EmailField(CharField):
         if not re.match(self.EMAIL_PATTERN, value):
             raise TypeError('{} is not a valid email'.format(value))
 
-    def __set__(self, instance, value):
-        self.check(value)
-        super(CharField, self).__set__(instance, value)
-
 
 class PhoneField(BaseField):
     PHONE_PATTERN = r'^\d+$'
 
-    def __set__(self, instance, value):
+    def check(self, value):
         if not re.match(self.EMAIL_PATTERN, value):
             raise TypeError('{} is not a valid phone'.format(value))
-        super(BaseField, self).__set__(instance, value)
 
 
 class DateField(BaseField):
@@ -105,10 +106,6 @@ class DateField(BaseField):
         if not (isinstance(value, str) & re.match(self.DATE_PATTERN)):
             raise TypeError('{} is not a valid date'.format(value))
 
-    def __set__(self, instance, value):
-        self.check(value)
-        super(BaseField, self).__set__(instance, self.get_date(value))
-
 
 class BirthDayField(DateField):
     def check(self, value):
@@ -117,26 +114,31 @@ class BirthDayField(DateField):
         if int(re.split(r'[\.]', value)[2]) < datetime.now().year:
             raise ValueError('{} is more than 70 years ago'.format(value))
 
-    def __set__(self, instance, value):
-        self.check(value)
-        super(BaseField, self).__set__(instance, self.get_date(value))
-
 
 class GenderField(BaseField):
-    def __set__(self, instance, value):
+    def check(self, value):
         if not (isinstance(value, int) & int(value) in (UNKNOWN, MALE, FEMALE)):
             raise TypeError('{} is not a valid gender'.format(value))
-        super(CharField, self).__set__(instance, value)
 
 
 class ClientIDsField(BaseField):
-    def __set__(self, instance, value):
+    def check(self, value):
         if not isinstance(value, list):
             raise TypeError('{} is not a list'.format(value))
-        super(BaseField, self).__set__(instance, value)
 
 
-class BaseRequest(metaclass=abc.ABCMeta):
+class ValidateMixin(object):
+    def is_valid(self):
+        for key, value in self.__class__.__dict__.items():
+            if isinstance(value, BaseField):
+                attr_value = self.__getattribute__(key)
+                if (value.required and (attr_value is None)) or ((not value.nullable) and len(attr_value) == 0):
+                    return False
+
+        return True
+
+
+class BaseRequest(ValidateMixin, metaclass=abc.ABCMeta):
     @classmethod
     @abc.abstractmethod
     def from_dict(cls, arguments):
@@ -173,7 +175,7 @@ class OnlineScoreRequest(BaseRequest):
         pass
 
 
-class MethodRequest(object):
+class MethodRequest(ValidateMixin):
     account = CharField(required=False, nullable=True)
     login = CharField(required=True, nullable=True)
     token = CharField(required=True, nullable=True)
@@ -194,17 +196,19 @@ class MethodRequest(object):
             self.login = request_dict['login']
             self.token = request_dict['token']
             self.arguments = request_dict['arguments']
+            self.method = request_dict['method']
 
             return self
-        except Exception:
+        except Exception as e:
+            print('Exception', e, e.with_traceback())
             return None
 
     def process_request(self):
         try:
             if self.method.upper() == 'ONLINE_SCORE':
-                request = OnlineScoreRequest().fromdict(self.arguments)
+                request = OnlineScoreRequest().from_dict(self.arguments)
             elif self.method.upper() == 'CLIENTS_INTERESTS':
-                request = ClientsInterestsRequest().fromdict(self.arguments)
+                request = ClientsInterestsRequest().from_dict(self.arguments)
             else:
                 return ERRORS[INVALID_REQUEST], INVALID_REQUEST
 
@@ -229,7 +233,7 @@ def check_auth(request):
 
 def method_handler(request, ctx, store):
     method_request = MethodRequest().from_request(request)
-    if not method_request:
+    if (not method_request) or (not method_request.is_valid()):
         return ERRORS[INVALID_REQUEST], INVALID_REQUEST
 
     if not check_auth(method_request):
