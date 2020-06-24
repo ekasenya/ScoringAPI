@@ -127,7 +127,17 @@ class ClientIDsField(BaseField):
             raise TypeError('{} is not a list'.format(value))
 
 
-class ValidateMixin(object):
+class BaseRequest(metaclass=abc.ABCMeta):
+    @classmethod
+    def from_dict(cls, source_dict):
+        self = cls()
+
+        for key, value in source_dict.items():
+            if key in cls.__dict__:
+                setattr(self, key, value)
+
+        return self
+
     def is_valid(self):
         for key, value in self.__class__.__dict__.items():
             if isinstance(value, BaseField):
@@ -137,13 +147,6 @@ class ValidateMixin(object):
 
         return True
 
-
-class BaseRequest(ValidateMixin, metaclass=abc.ABCMeta):
-    @classmethod
-    @abc.abstractmethod
-    def from_dict(cls, arguments):
-        raise NotImplementedError
-
     @abc.abstractmethod
     def process_request(self):
         raise NotImplementedError
@@ -152,9 +155,6 @@ class BaseRequest(ValidateMixin, metaclass=abc.ABCMeta):
 class ClientsInterestsRequest(BaseRequest):
     client_ids = ClientIDsField(required=True)
     date = DateField(required=False, nullable=True)
-
-    def from_dict(cls, arguments):
-        pass
 
     def process_request(self):
         pass
@@ -168,14 +168,11 @@ class OnlineScoreRequest(BaseRequest):
     birthday = BirthDayField(required=False, nullable=True)
     gender = GenderField(required=False, nullable=True)
 
-    def from_dict(cls, arguments):
-        pass
-
     def process_request(self):
         pass
 
 
-class MethodRequest(ValidateMixin):
+class MethodRequest(BaseRequest):
     account = CharField(required=False, nullable=True)
     login = CharField(required=True, nullable=True)
     token = CharField(required=True, nullable=True)
@@ -186,33 +183,15 @@ class MethodRequest(ValidateMixin):
     def is_admin(self):
         return self.login == ADMIN_LOGIN
 
-    @classmethod
-    def from_request(cls, request):
-        try:
-            request_dict = json.loads(json.dumps(request['body']))
-
-            self = cls()
-            self.account = request_dict['account']
-            self.login = request_dict['login']
-            self.token = request_dict['token']
-            self.arguments = request_dict['arguments']
-            self.method = request_dict['method']
-
-            return self
-        except Exception as e:
-            print('Exception', e, e.with_traceback())
-            return None
-
     def process_request(self):
-        try:
-            if self.method.upper() == 'ONLINE_SCORE':
-                request = OnlineScoreRequest().from_dict(self.arguments)
-            elif self.method.upper() == 'CLIENTS_INTERESTS':
-                request = ClientsInterestsRequest().from_dict(self.arguments)
-            else:
-                return ERRORS[INVALID_REQUEST], INVALID_REQUEST
+        if self.method.upper() == 'ONLINE_SCORE':
+            request = OnlineScoreRequest().from_dict(self.arguments)
+        elif self.method.upper() == 'CLIENTS_INTERESTS':
+            request = ClientsInterestsRequest().from_dict(self.arguments)
+        else:
+            return ERRORS[INVALID_REQUEST], INVALID_REQUEST
 
-        except Exception:
+        if not request:
             return ERRORS[INVALID_REQUEST], INVALID_REQUEST
 
         return request.process_request()
@@ -232,7 +211,12 @@ def check_auth(request):
 
 
 def method_handler(request, ctx, store):
-    method_request = MethodRequest().from_request(request)
+    try:
+        request_dict = json.loads(json.dumps(request['body']))
+    except json.decoder.JSONDecodeError:
+        return ERRORS[INVALID_REQUEST], INVALID_REQUEST
+
+    method_request = MethodRequest().from_dict(request_dict)
     if (not method_request) or (not method_request.is_valid()):
         return ERRORS[INVALID_REQUEST], INVALID_REQUEST
 
