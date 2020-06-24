@@ -27,11 +27,13 @@ class TestSuite(unittest.TestCase):
         return api.method_handler({"body": request, "headers": self.headers}, self.context, self.settings)
 
     def set_valid_auth(self, request):
+        sha512 = hashlib.sha512()
         if request.get("login") == api.ADMIN_LOGIN:
-            request["token"] = hashlib.sha512(datetime.datetime.now().strftime("%Y%m%d%H") + api.ADMIN_SALT).hexdigest()
+            sha512.update((datetime.datetime.now().strftime("%Y%m%d%H") + api.ADMIN_SALT).encode('UTF-8'))
         else:
             msg = request.get("account", "") + request.get("login", "") + api.SALT
-            request["token"] = hashlib.sha512(msg).hexdigest()
+            sha512.update(msg.encode('UTF-8'))
+        request["token"] = sha512.hexdigest()
 
     def test_empty_request(self):
         _, code = self.get_response({})
@@ -43,7 +45,7 @@ class TestSuite(unittest.TestCase):
         {"account": "horns&hoofs", "login": "admin", "method": "online_score", "token": "", "arguments": {}},
     ])
     def test_bad_auth(self, request):
-        _, code = self.get_response(request)
+        response, code = self.get_response(request)
         self.assertEqual(api.FORBIDDEN, code)
 
     @cases([
@@ -125,7 +127,7 @@ class TestSuite(unittest.TestCase):
     @cases([
         {"client_ids": [1, 2, 3], "date": datetime.datetime.today().strftime("%d.%m.%Y")},
         {"client_ids": [1, 2], "date": "19.07.2017"},
-        {"client_ids": [0]},
+        {"client_ids": [0]}
     ])
     def test_ok_interests_request(self, arguments):
         request = {"account": "horns&hoofs", "login": "h&f", "method": "clients_interests", "arguments": arguments}
@@ -133,7 +135,7 @@ class TestSuite(unittest.TestCase):
         response, code = self.get_response(request)
         self.assertEqual(api.OK, code, arguments)
         self.assertEqual(len(arguments["client_ids"]), len(response))
-        self.assertTrue(all(v and isinstance(v, list) and all(isinstance(i, basestring) for i in v)
+        self.assertTrue(all(v and isinstance(v, list) and all(isinstance(i, str) for i in v)
                         for v in response.values()))
         self.assertEqual(self.context.get("nclients"), len(arguments["client_ids"]))
 
