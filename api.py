@@ -2,17 +2,18 @@
 # -*- coding: utf-8 -*-
 
 import abc
+import collections.abc
 import datetime
 import hashlib
 import json
 import logging
-import uuid
 import re
+import uuid
+from collections import namedtuple
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from optparse import OptionParser
 from weakref import WeakKeyDictionary
-from collections import namedtuple
-import collections.abc
+
 import scoring
 
 SALT = "Otus"
@@ -108,10 +109,6 @@ class PhoneField(BaseField):
 class DateField(BaseField):
     DATE_PATTERN = r'^\d{2}\.\d{2}\.\d{4}$'
 
-    @staticmethod
-    def get_date(self, value):
-        return datetime.strptime(value, '%d.%m.%Y')
-
     def check(self, value):
         super(DateField, self).check(value)
 
@@ -169,7 +166,7 @@ class BaseRequest(metaclass=abc.ABCMeta):
     def attr_is_null(self, attr_name):
         attr_value = self.__getattribute__(attr_name)
         return (attr_value is None) or \
-               (isinstance(attr_value, collections.abc.Iterable) and (len(attr_value) == 0))
+               (isinstance(attr_value, collections.abc.Sized) and (len(attr_value) == 0))
 
     def validate(self):
         error_list = []
