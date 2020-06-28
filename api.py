@@ -42,6 +42,15 @@ GENDERS = {
 }
 
 
+STORE_CONFIG = {
+    'host': 'localhost',
+    'port': 6379,
+    'db': 0,
+    'socket_connect_timeout': 5,
+    'socket_connect_timeout': 5,
+    'max_retry_attempt_count': 5
+}
+
 class BaseField(object):
     def __init__(self, required=True, nullable=False):
         self.required = required
@@ -294,7 +303,7 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
     router = {
         "method": method_handler
     }
-    store = None
+    store = Scor(**STORE_CONFIG)
 
     def get_request_id(self, headers):
         return headers.get('HTTP_X_REQUEST_ID', uuid.uuid4().hex)
