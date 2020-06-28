@@ -46,10 +46,11 @@ STORE_CONFIG = {
     'host': 'localhost',
     'port': 6379,
     'db': 0,
-    'socket_connect_timeout': 5,
+    'socket_timeout': 5,
     'socket_connect_timeout': 5,
     'max_retry_attempt_count': 5
 }
+
 
 class BaseField(object):
     def __init__(self, required=True, nullable=False):
@@ -129,7 +130,7 @@ class BirthDayField(DateField):
     def check(self, value):
         super(BirthDayField, self).check(value)
 
-        if int(re.split(r'[\.]', value)[2]) < datetime.datetime.now().year - 70:
+        if int(re.split(r'[.]', value)[2]) < datetime.datetime.now().year - 70:
             raise ValueError('{} is more than 70 years ago'.format(value))
 
 
@@ -303,7 +304,7 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
     router = {
         "method": method_handler
     }
-    store = Scor(**STORE_CONFIG)
+    store = scoring.ScoreStore(**STORE_CONFIG)
 
     def get_request_id(self, headers):
         return headers.get('HTTP_X_REQUEST_ID', uuid.uuid4().hex)
@@ -315,7 +316,7 @@ class MainHTTPHandler(BaseHTTPRequestHandler):
         try:
             data_string = self.rfile.read(int(self.headers['Content-Length']))
             request = json.loads(data_string)
-        except:
+        except Exception:
             code = BAD_REQUEST
 
         if request:

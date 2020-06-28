@@ -1,5 +1,7 @@
 import hashlib
 import json
+import time
+
 import redis
 
 
@@ -12,40 +14,48 @@ class ScoreStore:
                                        socket_connect_timeout=socket_connect_timeout)
         self.max_retry_attempt_count = max_retry_attempt_count
 
-    def retry_connect_decorator(func):
-        def wrapper(*args, **kwargs):
-            for attempt_num in range(args[0].max_retry_attempt_count):
-                try:
-                    return func(*args, **kwargs)
-                except (redis.ConnectionError, redis.TimeoutError) as e:
-                    if attempt_num == args[0].max_retry_attempt_count - 1:
-                        raise
-                    else:
-                        time.sleep(1)
+    class RetryConnectionDecorator:
+        @staticmethod
+        def retry_connect(decorated):
+            def wrapper(*args, **kwargs):
+                obj = args[0]
 
-        return wrapper
+                if not isinstance(obj, ScoreStore):
+                    return decorated(*args, **kwargs)
 
-    @retry_connect_decorator
+                for attempt_num in range(obj.max_retry_attempt_count):
+                    try:
+                        return decorated(*args, **kwargs)
+                    except (redis.ConnectionError, redis.TimeoutError):
+                        if attempt_num == obj.max_retry_attempt_count - 1:
+                            raise
+                        else:
+                            time.sleep(1)
+
+            return wrapper
+
+    @RetryConnectionDecorator.retry_connect
     def cache_set(self, key, value, cache_time):
         try:
             self.redis_store.psetex(key, cache_time * 1000, value)
         except Exception:
             pass
 
-    @retry_connect_decorator
+    @RetryConnectionDecorator.retry_connect
     def cache_get(self, key):
         try:
             return self.get(key)
         except Exception:
             return None
 
-    @retry_connect_decorator
+    @RetryConnectionDecorator.retry_connect
     def set(self, key, value):
         self.redis_store.set(key, value)
 
-    @retry_connect_decorator
+    @RetryConnectionDecorator.retry_connect
     def get(self, key):
         return self.redis_store.get(key)
+
 
 def get_score(store, phone, email, birthday=None, gender=None, first_name=None, last_name=None):
     key_parts = [
