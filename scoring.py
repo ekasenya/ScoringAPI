@@ -6,12 +6,17 @@ import redis
 
 
 class ScoreStore:
+    @classmethod
+    def create_store(cls, host='localhost', port=6379,
+                     db=0, socket_timeout=5,
+                     socket_connect_timeout=5):
+        return redis.Redis(host=host, port=port, db=db, socket_timeout=socket_timeout,
+                           socket_connect_timeout=socket_connect_timeout)
 
     def __init__(self, host='localhost', port=6379,
                  db=0, socket_timeout=5,
                  socket_connect_timeout=5, max_retry_attempt_count=5):
-        self.redis_store = redis.Redis(host=host, port=port, db=db, socket_timeout=socket_timeout,
-                                       socket_connect_timeout=socket_connect_timeout)
+        self.redis_store = self.create_store(host, port, db, socket_timeout, socket_connect_timeout)
         self.max_retry_attempt_count = max_retry_attempt_count
 
     class RetryConnectionDecorator:
@@ -47,10 +52,6 @@ class ScoreStore:
             return self.get(key)
         except Exception:
             return None
-
-    @RetryConnectionDecorator.retry_connect
-    def set(self, key, value):
-        self.redis_store.set(key, value)
 
     @RetryConnectionDecorator.retry_connect
     def get(self, key):
