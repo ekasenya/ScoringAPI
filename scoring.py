@@ -8,15 +8,15 @@ import redis
 class ScoreStore:
     @classmethod
     def create_store(cls, host='localhost', port=6379,
-                     db=0, socket_timeout=5,
+                     socket_timeout=5,
                      socket_connect_timeout=5):
-        return redis.Redis(host=host, port=port, db=db, socket_timeout=socket_timeout,
+        return redis.Redis(host=host, port=port, socket_timeout=socket_timeout,
                            socket_connect_timeout=socket_connect_timeout)
 
     def __init__(self, host='localhost', port=6379,
-                 db=0, socket_timeout=5,
+                 socket_timeout=5,
                  socket_connect_timeout=5, max_retry_attempt_count=5):
-        self.redis_store = self.create_store(host, port, db, socket_timeout, socket_connect_timeout)
+        self.redis_store = self.create_store(host, port, socket_timeout, socket_connect_timeout)
         self.max_retry_attempt_count = max_retry_attempt_count
 
     class RetryConnectionDecorator:
@@ -65,7 +65,7 @@ def get_score(store, phone, email, birthday=None, gender=None, first_name=None, 
         phone or "",
         birthday.strftime("%Y%m%d") if birthday is not None else "",
     ]
-    key = "uid:" + hashlib.md5("".join(key_parts)).hexdigest()
+    key = "uid:" + hashlib.md5("".join(key_parts).encode('UTF-8')).hexdigest()
     # try get from cache,
     # fallback to heavy calculation in case of cache miss
     score = store.cache_get(key) or 0

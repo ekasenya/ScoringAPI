@@ -2,7 +2,7 @@ import pytest
 import datetime
 
 from tests.fixtures import unavailable_store, store, fields_set
-from api import ValidationException, GENDERS
+from api import ValidationException, GENDERS, ClientsInterestsRequest, OnlineScoreRequest
 
 
 def test_get_raise_exception(unavailable_store):
@@ -180,7 +180,51 @@ def test_set_invalid_client_ids_field(fields_set, value):
         fields_set.client_ids_field = value
 
 
-@pytest.mark.parametrize('value', [[], [1, 2, 3]])
-def test_set_correct_client_ids_field(fields_set, value):
-    fields_set.client_ids_field = value
-    assert (value == fields_set.client_ids_field)
+@pytest.mark.parametrize('source_dict', [
+    {'client_ids': [1, 2, 3]},
+    {'client_ids': [1], 'date': None},
+    {'client_ids': [1], 'date': datetime.datetime.today().strftime('%d.%m.%Y')},
+    {'client_ids': [1, 2, 3], 'date': datetime.datetime.today().strftime('%d.%m.%Y')},
+])
+def test_correct_client_ids_request(fields_set, source_dict):
+    request = ClientsInterestsRequest.from_dict(source_dict)
+    assert request.validate().success
+
+
+@pytest.mark.parametrize('source_dict', [
+    {'date': datetime.datetime.today().strftime('%d.%m.%Y')},
+    {'client_ids': [], 'date': None},
+    {'client_ids': [], 'date': datetime.datetime.today().strftime('%d.%m.%Y')}
+])
+def test_invalid_client_ids_request(fields_set, source_dict):
+    request = ClientsInterestsRequest.from_dict(source_dict)
+    assert not request.validate().success
+
+
+@pytest.mark.parametrize('source_dict', [
+    {"phone": "79175002040", "email": "test@gmail.com"},
+    {"first_name": "John", "last_name": "Smith"},
+    {"gender": 1, "birthday": "01.01.2000"},
+    {"phone": "79175002040", "email": "test@gmail.com", "first_name": "John", "last_name": "Smith", "gender": 1,
+        "birthday": "01.01.2000"},
+])
+def test_correct_online_score_request(fields_set, source_dict):
+    request = OnlineScoreRequest.from_dict(source_dict)
+    assert request.validate().success
+
+
+@pytest.mark.parametrize('source_dict', [
+    {},
+    {"phone": "79175002040"},
+    {"phone": "79175002040", "email": None},
+    {"phone": "79175002040", "email": ""},
+    {"phone": "79175002040", "first_name": "John"},
+    {"first_name": "John", "last_name": None},
+    {"first_name": "John", "last_name": ""},
+    {"phone": "79175002040", "birthday": "01.01.2000", "first_name": "John"},
+    {"phone": "79175002040", "gender": 1, "first_name": "John"},
+    {"phone": "79175002040", "gender": None, "birthday": "01.01.2000", "first_name": "John"},
+])
+def test_invalid_online_score_request(fields_set, source_dict):
+    request = OnlineScoreRequest.from_dict(source_dict)
+    assert not request.validate().success

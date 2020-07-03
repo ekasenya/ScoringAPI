@@ -41,15 +41,17 @@ GENDERS = {
     FEMALE: "female",
 }
 
-
 STORE_CONFIG = {
     'host': 'localhost',
     'port': 6379,
-    'db': 0,
     'socket_timeout': 5,
     'socket_connect_timeout': 5,
     'max_retry_attempt_count': 5
 }
+
+
+class ValidationException(Exception):
+    pass
 
 
 class BaseField(object):
@@ -68,7 +70,8 @@ class BaseField(object):
         return self.data.get(instance, None)
 
     def __set__(self, instance, value):
-        self.check(value)
+        if value is not None:
+            self.check(value)
         self.data[instance] = value
 
     def check(self, value):
@@ -80,7 +83,7 @@ class ArgumentsField(BaseField):
         try:
             json_obj = json.loads(json.dumps(value))
         except ValueError:
-            raise TypeError("{} is not a valid json".format(str(value)))
+            raise ValidationException("{} is not a valid json".format(str(value)))
 
         super(ArgumentsField, self).__set__(instance, json_obj)
 
@@ -90,7 +93,7 @@ class CharField(BaseField):
         super(CharField, self).check(value)
 
         if not isinstance(value, str):
-            raise TypeError('{} is not a str'.format(value))
+            raise ValidationException('{} is not a str'.format(value))
 
 
 class EmailField(CharField):
@@ -99,8 +102,8 @@ class EmailField(CharField):
     def check(self, value):
         super(EmailField, self).check(value)
 
-        if not (isinstance(value, str) and re.match(self.EMAIL_PATTERN, value)):
-            raise TypeError('{} is not a valid email'.format(value))
+        if not isinstance(value, str) or (value != "" and not re.match(self.EMAIL_PATTERN, value)):
+            raise ValidationException('{} is not a valid email'.format(value))
 
 
 class PhoneField(BaseField):
@@ -109,8 +112,8 @@ class PhoneField(BaseField):
     def check(self, value):
         super(PhoneField, self).check(value)
 
-        if not re.match(self.PHONE_PATTERN, str(value)):
-            raise TypeError('{} is not a valid phone'.format(value))
+        if value != '' and not re.match(self.PHONE_PATTERN, str(value)):
+            raise ValidationException('{} is not a valid phone'.format(value))
 
     def __set__(self, instance, value):
         super(PhoneField, self).__set__(instance, str(value))
@@ -122,34 +125,39 @@ class DateField(BaseField):
     def check(self, value):
         super(DateField, self).check(value)
 
-        if not (isinstance(value, str) and re.match(self.DATE_PATTERN, value)):
-            raise TypeError('{} is not a valid date'.format(value))
+        if not isinstance(value, str) or (value != '' and not re.match(self.DATE_PATTERN, value)):
+            raise ValidationException('{} is not a valid date'.format(value))
+
+    def __get__(self, instance, owner):
+        result = super(DateField, self).__get__(instance, owner)
+
+        return datetime.datetime.strptime(result, '%d.%m.%Y') if result else None
 
 
 class BirthDayField(DateField):
     def check(self, value):
         super(BirthDayField, self).check(value)
 
-        if int(re.split(r'[.]', value)[2]) < datetime.datetime.now().year - 70:
-            raise ValueError('{} is more than 70 years ago'.format(value))
+        if value != '' and int(re.split(r'[.]', value)[2]) < datetime.datetime.now().year - 70:
+            raise ValidationException('{} is more than 70 years ago'.format(value))
 
 
 class GenderField(BaseField):
     def check(self, value):
         super(GenderField, self).check(value)
 
-        if not (isinstance(value, int) and int(value) in (UNKNOWN, MALE, FEMALE)):
-            raise TypeError('{} is not a valid gender'.format(value))
+        if not (isinstance(value, int) and int(value) in [key for key in GENDERS.keys()]):
+            raise ValidationException('{} is not a valid gender'.format(value))
 
 
 class ClientIDsField(BaseField):
     def check(self, value):
         super(ClientIDsField, self).check(value)
         if not isinstance(value, list):
-            raise TypeError('{} is not a list'.format(value))
+            raise ValidationException('{} is not a list'.format(value))
 
         if not all(isinstance(item, int) for item in value):
-            raise TypeError('{} should contain only integers'.format(value))
+            raise ValidationException('{} should contain only integers'.format(value))
 
 
 ValidationResult = namedtuple('ValidationResult', 'success error_message')
@@ -165,11 +173,11 @@ class BaseRequest(metaclass=abc.ABCMeta):
             try:
                 if key in cls.__dict__:
                     setattr(self, key, value)
-            except (TypeError, ValueError) as e:
+            except ValidationException as e:
                 error_list.append(str(e))
 
         if len(error_list) > 0:
-            raise TypeError(', '.join(error_list))
+            raise ValidationException(', '.join(error_list))
 
         return self
 
@@ -256,7 +264,7 @@ class MethodRequest(BaseRequest):
                 request = ClientsInterestsRequest().from_dict(self.arguments)
             else:
                 return ERRORS[INVALID_REQUEST], INVALID_REQUEST
-        except TypeError as e:
+        except ValidationException as e:
             return str(e), INVALID_REQUEST
 
         validation_result = request.validate()
