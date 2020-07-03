@@ -1,26 +1,8 @@
 import pytest
-from mock import Mock, patch
+import datetime
 
-from scoring import ScoreStore
-
-
-@pytest.fixture(scope="module")
-def unavailable_store(request):
-    mocked_redis = Mock()
-    mocked_redis.get.side_effect = ConnectionError
-    mocked_redis.set.side_effect = ConnectionError
-    with patch('scoring.ScoreStore.create_store', return_value=mocked_redis):
-        print('create unavailablestore')
-        yield ScoreStore()
-
-
-@pytest.fixture(scope="module")
-def store(request):
-    mocked_redis = Mock()
-    mocked_redis.get.return_value = 1
-    with patch('scoring.ScoreStore.create_store', return_value=mocked_redis):
-        print('create normal store')
-        yield ScoreStore()
+from tests.fixtures import unavailable_store, store, fields_set
+from api import ValidationException, GENDERS
 
 
 def test_get_raise_exception(unavailable_store):
@@ -37,13 +19,168 @@ def test_cached_set_raise_exception(unavailable_store):
 
 
 def test_store_ok(store):
-    assert(store.get('key') == 1)
+    assert (store.get('key') is None)
 
 
 def test_cached_store_ok(store):
-    store.cache_set('key', 1, 60 * 60)
-    assert(store.cache_get('key') == 1)
+    assert (store.cache_get('key') is None)
 
 
-if __name__ == "__main__":
-    pytest.main()
+@pytest.mark.parametrize('value', [
+    ({'test'}),
+    datetime.date.today()
+])
+def test_set_invalid_arguments_field(fields_set, value):
+    with pytest.raises(TypeError):
+        fields_set.arguments_field = value
+
+
+@pytest.mark.parametrize('value', [
+    (''),
+    ({"phone": "79175002040", "email": "stupnikov@otus.ru", "first_name": "Стансилав", "last_name": "Ступников",' \
+      '"birthday": "01.01.1990", "gender": 1})
+])
+def test_set_correct_arguments_field(fields_set, value):
+    fields_set.arguments_field = value
+    assert (value == fields_set.arguments_field)
+
+
+@pytest.mark.parametrize('value', [
+    123,
+    [],
+    {'key': 1},
+    datetime.date.today()
+])
+def test_set_invalid_char_field(fields_set, value):
+    with pytest.raises(ValidationException):
+        fields_set.char_field = value
+
+
+@pytest.mark.parametrize('value', [
+    '',
+    'Test string'
+])
+def test_set_correct_char_field(fields_set, value):
+    fields_set.char_field = value
+    assert (value == fields_set.char_field)
+
+
+@pytest.mark.parametrize('value', [
+    123,
+    [],
+    {'key': 1},
+    datetime.date.today(),
+    'test@gmail',
+    '1test@gmail.com',
+    'test@@gmail.com'
+])
+def test_set_invalid_email_field(fields_set, value):
+    with pytest.raises(ValidationException):
+        fields_set.email_field = value
+
+
+@pytest.mark.parametrize('value', [
+    'test@gmail.com',
+    'senenkova.e@yandex.ru'
+])
+def test_set_correct_email_field(fields_set, value):
+    fields_set.email_field = value
+    assert (value == fields_set.email_field)
+
+
+@pytest.mark.parametrize('value', [
+    123,
+    [],
+    {'key': 1},
+    datetime.date.today(),
+    '89032023032',
+    '790320230321'
+])
+def test_set_invalid_phone_field(fields_set, value):
+    with pytest.raises(ValidationException):
+        fields_set.phone_field = value
+
+
+@pytest.mark.parametrize('value', [
+    '79032023032'
+])
+def test_set_correct_phone_field(fields_set, value):
+    fields_set.phone_field = value
+    assert (value == fields_set.phone_field)
+
+
+@pytest.mark.parametrize('value', [
+    123,
+    [],
+    {'key': 1},
+    '01/01/2020',
+    '2020-01-01'
+])
+def test_set_invalid_date_field(fields_set, value):
+    with pytest.raises(ValidationException):
+        fields_set.date_field = value
+
+
+@pytest.mark.parametrize('value', [
+    '01.01.2020'
+])
+def test_set_correct_date_field(fields_set, value):
+    fields_set.date_field = value
+    assert (datetime.datetime.strptime(value, '%d.%m.%Y') == fields_set.date_field)
+
+
+@pytest.mark.parametrize('value', [
+    123,
+    [],
+    {'key': 1},
+    '01/01/2020',
+    '2020-01-01',
+    '.'.join(['01', '01', str(datetime.date.today().year - 75)])
+])
+def test_set_invalid_birthdate_field(fields_set, value):
+    with pytest.raises(ValidationException):
+        fields_set.birthday_field = value
+
+
+@pytest.mark.parametrize('value', [
+    '.'.join(['01', '01', str(datetime.date.today().year - 20)])
+])
+def test_set_correct_birthdate_field(fields_set, value):
+    fields_set.date_field = value
+    assert (datetime.datetime.strptime(value, '%d.%m.%Y') == fields_set.date_field)
+
+
+@pytest.mark.parametrize('value', [
+    123,
+    [],
+    {'key': 1},
+    -1,
+    10
+])
+def test_set_invalid_gender_field(fields_set, value):
+    with pytest.raises(ValidationException):
+        fields_set.gender_field = value
+
+
+@pytest.mark.parametrize('value', [key for key in GENDERS.keys()])
+def test_set_correct_gender_field(fields_set, value):
+    fields_set.gender_field = value
+    assert (value == fields_set.gender_field)
+
+
+@pytest.mark.parametrize('value', [
+    123,
+    {'key': 1},
+    datetime.date.today(),
+    'Test string',
+    ['test', 1, 1]
+])
+def test_set_invalid_client_ids_field(fields_set, value):
+    with pytest.raises(ValidationException):
+        fields_set.client_ids_field = value
+
+
+@pytest.mark.parametrize('value', [[], [1, 2, 3]])
+def test_set_correct_client_ids_field(fields_set, value):
+    fields_set.client_ids_field = value
+    assert (value == fields_set.client_ids_field)

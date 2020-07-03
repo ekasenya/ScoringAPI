@@ -5,6 +5,7 @@ import unittest
 import pytest
 
 import api
+from tests.fixtures import store
 
 
 def cases(cases):
@@ -16,7 +17,6 @@ def cases(cases):
                 try:
                     f(*new_args)
                 except AssertionError:
-                    print('Test case "{}" failed'.format(c))
                     raise
         return wrapper
     return decorator
@@ -26,10 +26,13 @@ class TestSuite(unittest.TestCase):
     def setUp(self):
         self.context = {}
         self.headers = {}
-        self.settings = {}
+
+    @pytest.fixture(autouse=True)
+    def _set_store(self, store):
+        self.store = store
 
     def get_response(self, request):
-        return api.method_handler({"body": request, "headers": self.headers}, self.context, self.settings)
+        return api.method_handler({"body": request, "headers": self.headers}, self.context, self.store)
 
     def set_valid_auth(self, request):
         sha512 = hashlib.sha512()
@@ -140,7 +143,7 @@ class TestSuite(unittest.TestCase):
         response, code = self.get_response(request)
         self.assertEqual(api.OK, code, arguments)
         self.assertEqual(len(arguments["client_ids"]), len(response))
-        self.assertTrue(all(v and isinstance(v, list) and all(isinstance(i, str) for i in v)
+        self.assertTrue(all(isinstance(v, list) and all(isinstance(i, str) for i in v)
                         for v in response.values()))
         self.assertEqual(self.context.get("nclients"), len(arguments["client_ids"]))
 
