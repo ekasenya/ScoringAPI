@@ -1,5 +1,5 @@
 import pytest
-import datetime
+from datetime import datetime, date
 
 from tests.fixtures import unavailable_store, store, fields_set
 from api import ValidationError, GENDERS, ClientsInterestsRequest, OnlineScoreRequest
@@ -28,7 +28,7 @@ def test_cached_store_ok(store):
 
 @pytest.mark.parametrize('value', [
     ({'test'}),
-    datetime.date.today()
+    date.today()
 ])
 def test_set_invalid_arguments_field(fields_set, value):
     with pytest.raises(ValidationError):
@@ -49,7 +49,7 @@ def test_set_correct_arguments_field(fields_set, value):
     123,
     [],
     {'key': 1},
-    datetime.date.today()
+    date.today()
 ])
 def test_set_invalid_char_field(fields_set, value):
     with pytest.raises(ValidationError):
@@ -69,7 +69,7 @@ def test_set_correct_char_field(fields_set, value):
     123,
     [],
     {'key': 1},
-    datetime.date.today(),
+    date.today(),
     'test@gmail',
     '1test@gmail.com',
     'test@@gmail.com'
@@ -92,7 +92,7 @@ def test_set_correct_email_field(fields_set, value):
     123,
     [],
     {'key': 1},
-    datetime.date.today(),
+    date.today(),
     '89032023032',
     '790320230321'
 ])
@@ -126,7 +126,7 @@ def test_set_invalid_date_field(fields_set, value):
 ])
 def test_set_correct_date_field(fields_set, value):
     fields_set.date_field = value
-    assert (datetime.datetime.strptime(value, '%d.%m.%Y') == fields_set.date_field)
+    assert (datetime.strptime(value, '%d.%m.%Y') == fields_set.date_field)
 
 
 @pytest.mark.parametrize('value', [
@@ -135,7 +135,7 @@ def test_set_correct_date_field(fields_set, value):
     {'key': 1},
     '01/01/2020',
     '2020-01-01',
-    '.'.join(['01', '01', str(datetime.date.today().year - 75)])
+    '.'.join(['01', '01', str(date.today().year - 75)])
 ])
 def test_set_invalid_birthdate_field(fields_set, value):
     with pytest.raises(ValidationError):
@@ -143,11 +143,11 @@ def test_set_invalid_birthdate_field(fields_set, value):
 
 
 @pytest.mark.parametrize('value', [
-    '.'.join(['01', '01', str(datetime.date.today().year - 20)])
+    '.'.join(['01', '01', str(date.today().year - 20)])
 ])
 def test_set_correct_birthdate_field(fields_set, value):
     fields_set.date_field = value
-    assert (datetime.datetime.strptime(value, '%d.%m.%Y') == fields_set.date_field)
+    assert (datetime.strptime(value, '%d.%m.%Y') == fields_set.date_field)
 
 
 @pytest.mark.parametrize('value', [
@@ -171,7 +171,7 @@ def test_set_correct_gender_field(fields_set, value):
 @pytest.mark.parametrize('value', [
     123,
     {'key': 1},
-    datetime.date.today(),
+    date.today(),
     'Test string',
     ['test', 1, 1]
 ])
@@ -183,8 +183,8 @@ def test_set_invalid_client_ids_field(fields_set, value):
 @pytest.mark.parametrize('source_dict', [
     {'client_ids': [1, 2, 3]},
     {'client_ids': [1], 'date': None},
-    {'client_ids': [1], 'date': datetime.datetime.today().strftime('%d.%m.%Y')},
-    {'client_ids': [1, 2, 3], 'date': datetime.datetime.today().strftime('%d.%m.%Y')},
+    {'client_ids': [1], 'date': datetime.today().strftime('%d.%m.%Y')},
+    {'client_ids': [1, 2, 3], 'date': datetime.today().strftime('%d.%m.%Y')},
 ])
 def test_correct_client_ids_request(fields_set, source_dict):
     request = ClientsInterestsRequest.from_dict(source_dict)
@@ -192,9 +192,9 @@ def test_correct_client_ids_request(fields_set, source_dict):
 
 
 @pytest.mark.parametrize('source_dict', [
-    {'date': datetime.datetime.today().strftime('%d.%m.%Y')},
+    {'date': datetime.today().strftime('%d.%m.%Y')},
     {'client_ids': [], 'date': None},
-    {'client_ids': [], 'date': datetime.datetime.today().strftime('%d.%m.%Y')}
+    {'client_ids': [], 'date': datetime.today().strftime('%d.%m.%Y')}
 ])
 def test_invalid_client_ids_request(fields_set, source_dict):
     request = ClientsInterestsRequest.from_dict(source_dict)

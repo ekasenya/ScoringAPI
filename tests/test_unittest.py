@@ -1,5 +1,5 @@
 import hashlib
-import datetime
+from datetime import datetime, date
 import functools
 import unittest
 import pytest
@@ -37,7 +37,7 @@ class TestSuite(unittest.TestCase):
     def set_valid_auth(self, request):
         sha512 = hashlib.sha512()
         if request.get("login") == api.ADMIN_LOGIN:
-            sha512.update((datetime.datetime.now().strftime("%Y%m%d%H") + api.ADMIN_SALT).encode('UTF-8'))
+            sha512.update((datetime.now().strftime("%Y%m%d%H") + api.ADMIN_SALT).encode('UTF-8'))
         else:
             msg = request.get("account", "") + request.get("login", "") + api.SALT
             sha512.update(msg.encode('UTF-8'))
@@ -133,7 +133,7 @@ class TestSuite(unittest.TestCase):
         self.assertTrue(len(response))
 
     @cases([
-        {"client_ids": [1, 2, 3], "date": datetime.datetime.today().strftime("%d.%m.%Y")},
+        {"client_ids": [1, 2, 3], "date": date.today().strftime("%d.%m.%Y")},
         {"client_ids": [1, 2], "date": "19.07.2017"},
         {"client_ids": [0]}
     ])

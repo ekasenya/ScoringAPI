@@ -3,7 +3,7 @@
 
 import abc
 import collections.abc
-import datetime
+from datetime import datetime
 import hashlib
 import json
 import logging
@@ -130,14 +130,14 @@ class DateField(BaseField):
     def __get__(self, instance, owner):
         result = super(DateField, self).__get__(instance, owner)
 
-        return datetime.datetime.strptime(result, '%d.%m.%Y') if result else None
+        return datetime.strptime(result, '%d.%m.%Y') if result else None
 
 
 class BirthDayField(DateField):
     def check(self, value):
         super(BirthDayField, self).check(value)
 
-        if value != '' and int(re.split(r'[.]', value)[2]) < datetime.datetime.now().year - 70:
+        if value != '' and int(re.split(r'[.]', value)[2]) < datetime.now().year - 70:
             raise ValidationError('{} is more than 70 years ago'.format(value))
 
 
@@ -238,7 +238,7 @@ class MethodRequest(BaseRequest):
 def check_auth(request):
     sha512 = hashlib.sha512()
     if request.is_admin:
-        sha512.update((datetime.datetime.now().strftime("%Y%m%d%H") + ADMIN_SALT).encode('UTF-8'))
+        sha512.update((datetime.now().strftime("%Y%m%d%H") + ADMIN_SALT).encode('UTF-8'))
     else:
         sha512.update((request.account + request.login + SALT).encode('UTF-8'))
 
