@@ -9,7 +9,6 @@ import json
 import logging
 import re
 import uuid
-from collections import namedtuple
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from optparse import OptionParser
 from weakref import WeakKeyDictionary
@@ -50,7 +49,7 @@ STORE_CONFIG = {
 }
 
 
-class ValidationException(Exception):
+class ValidationError(Exception):
     pass
 
 
@@ -82,8 +81,8 @@ class ArgumentsField(BaseField):
     def __set__(self, instance, value):
         try:
             json_obj = json.loads(json.dumps(value))
-        except ValueError:
-            raise ValidationException("{} is not a valid json".format(str(value)))
+        except (TypeError, ValueError):
+            raise ValidationError("{} is not a valid json".format(str(value)))
 
         super(ArgumentsField, self).__set__(instance, json_obj)
 
@@ -93,7 +92,7 @@ class CharField(BaseField):
         super(CharField, self).check(value)
 
         if not isinstance(value, str):
-            raise ValidationException('{} is not a str'.format(value))
+            raise ValidationError('{} is not a str'.format(value))
 
 
 class EmailField(CharField):
@@ -103,7 +102,7 @@ class EmailField(CharField):
         super(EmailField, self).check(value)
 
         if not isinstance(value, str) or (value != "" and not re.match(self.EMAIL_PATTERN, value)):
-            raise ValidationException('{} is not a valid email'.format(value))
+            raise ValidationError('{} is not a valid email'.format(value))
 
 
 class PhoneField(BaseField):
@@ -113,7 +112,7 @@ class PhoneField(BaseField):
         super(PhoneField, self).check(value)
 
         if value != '' and not re.match(self.PHONE_PATTERN, str(value)):
-            raise ValidationException('{} is not a valid phone'.format(value))
+            raise ValidationError('{} is not a valid phone'.format(value))
 
     def __set__(self, instance, value):
         super(PhoneField, self).__set__(instance, str(value))
@@ -126,7 +125,7 @@ class DateField(BaseField):
         super(DateField, self).check(value)
 
         if not isinstance(value, str) or (value != '' and not re.match(self.DATE_PATTERN, value)):
-            raise ValidationException('{} is not a valid date'.format(value))
+            raise ValidationError('{} is not a valid date'.format(value))
 
     def __get__(self, instance, owner):
         result = super(DateField, self).__get__(instance, owner)
@@ -139,7 +138,7 @@ class BirthDayField(DateField):
         super(BirthDayField, self).check(value)
 
         if value != '' and int(re.split(r'[.]', value)[2]) < datetime.datetime.now().year - 70:
-            raise ValidationException('{} is more than 70 years ago'.format(value))
+            raise ValidationError('{} is more than 70 years ago'.format(value))
 
 
 class GenderField(BaseField):
@@ -147,20 +146,17 @@ class GenderField(BaseField):
         super(GenderField, self).check(value)
 
         if not (isinstance(value, int) and int(value) in [key for key in GENDERS.keys()]):
-            raise ValidationException('{} is not a valid gender'.format(value))
+            raise ValidationError('{} is not a valid gender'.format(value))
 
 
 class ClientIDsField(BaseField):
     def check(self, value):
         super(ClientIDsField, self).check(value)
         if not isinstance(value, list):
-            raise ValidationException('{} is not a list'.format(value))
+            raise ValidationError('{} is not a list'.format(value))
 
         if not all(isinstance(item, int) for item in value):
-            raise ValidationException('{} should contain only integers'.format(value))
-
-
-ValidationResult = namedtuple('ValidationResult', 'success error_message')
+            raise ValidationError('{} should contain only integers'.format(value))
 
 
 class BaseRequest(metaclass=abc.ABCMeta):
@@ -173,16 +169,16 @@ class BaseRequest(metaclass=abc.ABCMeta):
             try:
                 if key in cls.__dict__:
                     setattr(self, key, value)
-            except ValidationException as e:
+            except ValidationError as e:
                 error_list.append(str(e))
 
-        if len(error_list) > 0:
-            raise ValidationException(', '.join(error_list))
+        if error_list:
+            raise ValidationError(', '.join(error_list))
 
         return self
 
     def attr_is_null(self, attr_name):
-        attr_value = self.__getattribute__(attr_name)
+        attr_value = getattr(self, attr_name)
         return (attr_value is None) or \
                (isinstance(attr_value, collections.abc.Sized) and (len(attr_value) == 0))
 
@@ -190,25 +186,18 @@ class BaseRequest(metaclass=abc.ABCMeta):
         error_list = []
         for key, value in self.__class__.__dict__.items():
             if isinstance(value, BaseField):
-                if value.required and (self.__getattribute__(key) is None):
+                if value.required and (getattr(self, key) is None):
                     error_list.append('{} is required'.format(key))
                 elif not value.nullable and self.attr_is_null(key):
                     error_list.append('{} is not nullable'.format(key))
 
-        return ValidationResult(len(error_list) == 0, ', '.join(error_list))
-
-    @abc.abstractmethod
-    def process_request(self, ctx, store):
-        raise NotImplementedError
+        if error_list:
+            raise ValidationError(', '.join(error_list))
 
 
 class ClientsInterestsRequest(BaseRequest):
     client_ids = ClientIDsField(required=True)
     date = DateField(required=False, nullable=True)
-
-    def process_request(self, ctx, store):
-        ctx['nclients'] = len(self.client_ids)
-        return {str(cid): scoring.get_interests(store, cid) for cid in self.client_ids}, OK
 
 
 class OnlineScoreRequest(BaseRequest):
@@ -222,26 +211,16 @@ class OnlineScoreRequest(BaseRequest):
     is_admin = False
 
     def validate(self):
-        result = super(OnlineScoreRequest, self).validate()
-
-        if not result.success:
-            return result
+        super(OnlineScoreRequest, self).validate()
 
         is_valid = (not (self.attr_is_null('phone') or self.attr_is_null('email'))) or \
                    (not (self.attr_is_null('first_name') or self.attr_is_null('last_name'))) or \
                    (not (self.attr_is_null('birthday') or self.attr_is_null('gender')))
 
-        return ValidationResult(is_valid, '' if is_valid else "Request should contain at least one pair " \
-                                                              "phone-email, first name-last name, gender-birthday " \
-                                                              "with non-empty values")
-
-    def process_request(self, ctx, store):
-        ctx['has'] = [key for key, value in self.__class__.__dict__.items()
-                      if isinstance(value, BaseField) and not self.attr_is_null(key)]
-
-        score = 42 if self.is_admin else scoring.get_score(store, self.phone, self.email, self.birthday, self.gender,
-                                                           self.first_name, self.last_name)
-        return {"score": score}, OK
+        if not is_valid:
+            raise ValidationError("Request should contain at least one pair "
+                                  "phone-email, first name-last name, gender-birthday "
+                                  "with non-empty values")
 
 
 class MethodRequest(BaseRequest):
@@ -254,24 +233,6 @@ class MethodRequest(BaseRequest):
     @property
     def is_admin(self):
         return self.login == ADMIN_LOGIN
-
-    def process_request(self, ctx, store):
-        try:
-            if self.method.upper() == 'ONLINE_SCORE':
-                request = OnlineScoreRequest().from_dict(self.arguments)
-                request.is_admin = self.is_admin
-            elif self.method.upper() == 'CLIENTS_INTERESTS':
-                request = ClientsInterestsRequest().from_dict(self.arguments)
-            else:
-                return ERRORS[INVALID_REQUEST], INVALID_REQUEST
-        except ValidationException as e:
-            return str(e), INVALID_REQUEST
-
-        validation_result = request.validate()
-        if not validation_result.success:
-            return validation_result.error_message, INVALID_REQUEST
-
-        return request.process_request(ctx, store)
 
 
 def check_auth(request):
@@ -288,24 +249,52 @@ def check_auth(request):
 
 
 def method_handler(request, ctx, store):
-    try:
-        request_dict = json.loads(json.dumps(request['body']))
-    except json.decoder.JSONDecodeError:
-        return ERRORS[INVALID_REQUEST], INVALID_REQUEST
-
+    request_dict = json.loads(json.dumps(request['body']))
     try:
         method_request = MethodRequest().from_dict(request_dict)
-    except TypeError as e:
-        return e, INVALID_REQUEST
-
-    validation_result = method_request.validate()
-    if not validation_result.success:
-        return validation_result.error_message, INVALID_REQUEST
+        method_request.validate()
+    except ValidationError as e:
+        return str(e), INVALID_REQUEST
 
     if not check_auth(method_request):
-        return ERRORS[FORBIDDEN], FORBIDDEN
+        return '', FORBIDDEN
 
-    return method_request.process_request(ctx, store)
+    try:
+        if method_request.method.upper() == 'ONLINE_SCORE':
+            request = OnlineScoreRequest().from_dict(method_request.arguments)
+            request.is_admin = method_request.is_admin
+        elif method_request.method.upper() == 'CLIENTS_INTERESTS':
+            request = ClientsInterestsRequest().from_dict(method_request.arguments)
+        else:
+            return '', INVALID_REQUEST
+
+        request.validate()
+    except ValidationError as e:
+        return str(e), INVALID_REQUEST
+
+    return request_handler(request, ctx, store)
+
+
+def request_handler(request, ctx, store):
+    if isinstance(request, OnlineScoreRequest):
+        return online_score_request_handler(request, ctx, store)
+    elif isinstance(request, ClientsInterestsRequest):
+        return client_ids_request_handler(request, ctx, store)
+
+
+def online_score_request_handler(request, ctx, store):
+    ctx['has'] = [key for key, value in request.__class__.__dict__.items()
+                  if isinstance(value, BaseField) and not request.attr_is_null(key)]
+
+    score = 42 if request.is_admin else scoring.get_score(store, request.phone, request.email, request.birthday,
+                                                          request.gender,
+                                                          request.first_name, request.last_name)
+    return {"score": score}, OK
+
+
+def client_ids_request_handler(request, ctx, store):
+    ctx['nclients'] = len(request.client_ids)
+    return {str(cid): scoring.get_interests(store, cid) for cid in request.client_ids}, OK
 
 
 class MainHTTPHandler(BaseHTTPRequestHandler):

@@ -2,7 +2,7 @@ import pytest
 import datetime
 
 from tests.fixtures import unavailable_store, store, fields_set
-from api import ValidationException, GENDERS, ClientsInterestsRequest, OnlineScoreRequest
+from api import ValidationError, GENDERS, ClientsInterestsRequest, OnlineScoreRequest
 
 
 def test_get_raise_exception(unavailable_store):
@@ -31,14 +31,14 @@ def test_cached_store_ok(store):
     datetime.date.today()
 ])
 def test_set_invalid_arguments_field(fields_set, value):
-    with pytest.raises(TypeError):
+    with pytest.raises(ValidationError):
         fields_set.arguments_field = value
 
 
 @pytest.mark.parametrize('value', [
-    (''),
-    ({"phone": "79175002040", "email": "stupnikov@otus.ru", "first_name": "Стансилав", "last_name": "Ступников",' \
-      '"birthday": "01.01.1990", "gender": 1})
+    '',
+    {"phone": "79175002040", "email": "stupnikov@otus.ru", "first_name": "Стансилав", "last_name": "Ступников", ' \
+      '"birthday": "01.01.1990", "gender": 1}
 ])
 def test_set_correct_arguments_field(fields_set, value):
     fields_set.arguments_field = value
@@ -52,7 +52,7 @@ def test_set_correct_arguments_field(fields_set, value):
     datetime.date.today()
 ])
 def test_set_invalid_char_field(fields_set, value):
-    with pytest.raises(ValidationException):
+    with pytest.raises(ValidationError):
         fields_set.char_field = value
 
 
@@ -75,7 +75,7 @@ def test_set_correct_char_field(fields_set, value):
     'test@@gmail.com'
 ])
 def test_set_invalid_email_field(fields_set, value):
-    with pytest.raises(ValidationException):
+    with pytest.raises(ValidationError):
         fields_set.email_field = value
 
 
@@ -97,7 +97,7 @@ def test_set_correct_email_field(fields_set, value):
     '790320230321'
 ])
 def test_set_invalid_phone_field(fields_set, value):
-    with pytest.raises(ValidationException):
+    with pytest.raises(ValidationError):
         fields_set.phone_field = value
 
 
@@ -117,7 +117,7 @@ def test_set_correct_phone_field(fields_set, value):
     '2020-01-01'
 ])
 def test_set_invalid_date_field(fields_set, value):
-    with pytest.raises(ValidationException):
+    with pytest.raises(ValidationError):
         fields_set.date_field = value
 
 
@@ -138,7 +138,7 @@ def test_set_correct_date_field(fields_set, value):
     '.'.join(['01', '01', str(datetime.date.today().year - 75)])
 ])
 def test_set_invalid_birthdate_field(fields_set, value):
-    with pytest.raises(ValidationException):
+    with pytest.raises(ValidationError):
         fields_set.birthday_field = value
 
 
@@ -158,7 +158,7 @@ def test_set_correct_birthdate_field(fields_set, value):
     10
 ])
 def test_set_invalid_gender_field(fields_set, value):
-    with pytest.raises(ValidationException):
+    with pytest.raises(ValidationError):
         fields_set.gender_field = value
 
 
@@ -176,7 +176,7 @@ def test_set_correct_gender_field(fields_set, value):
     ['test', 1, 1]
 ])
 def test_set_invalid_client_ids_field(fields_set, value):
-    with pytest.raises(ValidationException):
+    with pytest.raises(ValidationError):
         fields_set.client_ids_field = value
 
 
@@ -188,7 +188,7 @@ def test_set_invalid_client_ids_field(fields_set, value):
 ])
 def test_correct_client_ids_request(fields_set, source_dict):
     request = ClientsInterestsRequest.from_dict(source_dict)
-    assert request.validate().success
+    request.validate()
 
 
 @pytest.mark.parametrize('source_dict', [
@@ -198,7 +198,8 @@ def test_correct_client_ids_request(fields_set, source_dict):
 ])
 def test_invalid_client_ids_request(fields_set, source_dict):
     request = ClientsInterestsRequest.from_dict(source_dict)
-    assert not request.validate().success
+    with pytest.raises(ValidationError):
+        request.validate()
 
 
 @pytest.mark.parametrize('source_dict', [
@@ -210,7 +211,7 @@ def test_invalid_client_ids_request(fields_set, source_dict):
 ])
 def test_correct_online_score_request(fields_set, source_dict):
     request = OnlineScoreRequest.from_dict(source_dict)
-    assert request.validate().success
+    request.validate()
 
 
 @pytest.mark.parametrize('source_dict', [
@@ -227,4 +228,5 @@ def test_correct_online_score_request(fields_set, source_dict):
 ])
 def test_invalid_online_score_request(fields_set, source_dict):
     request = OnlineScoreRequest.from_dict(source_dict)
-    assert not request.validate().success
+    with pytest.raises(ValidationError):
+        assert not request.validate().success

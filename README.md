@@ -24,7 +24,7 @@ Server starts at 8080 port.
 To run tests execute in the project directoryl:
 
 ```
-python3  -m unittest 
+python3  -m pytest 
 ```  
 
 

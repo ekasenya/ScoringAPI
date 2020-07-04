@@ -6,7 +6,7 @@ import api
 
 
 @pytest.fixture(scope="module")
-def unavailable_store(request):
+def unavailable_store():
     mocked_redis = Mock()
     mocked_redis.get.side_effect = ConnectionError
     mocked_redis.set.side_effect = ConnectionError
@@ -15,7 +15,7 @@ def unavailable_store(request):
 
 
 @pytest.fixture(scope="module")
-def store(request):
+def store():
     mocked_redis = Mock()
     mocked_redis.get.return_value = None
     with patch('scoring.ScoreStore.create_store', return_value=mocked_redis):
@@ -34,6 +34,6 @@ class FieldsSet:
 
 
 @pytest.fixture(scope='module')
-def fields_set(request):
+def fields_set():
     print('create fields_set')
     return FieldsSet()
