@@ -78,13 +78,12 @@ class BaseField(object):
 
 
 class ArgumentsField(BaseField):
-    def __set__(self, instance, value):
+
+    def check(self, value):
         try:
-            json_obj = json.loads(json.dumps(value))
+            json.loads(json.dumps(value))
         except (TypeError, ValueError):
             raise ValidationError("{} is not a valid json".format(str(value)))
-
-        super(ArgumentsField, self).__set__(instance, json_obj)
 
 
 class CharField(BaseField):
@@ -263,23 +262,17 @@ def method_handler(request, ctx, store):
         if method_request.method.upper() == 'ONLINE_SCORE':
             request = OnlineScoreRequest().from_dict(method_request.arguments)
             request.is_admin = method_request.is_admin
+            request.validate()
+            return online_score_request_handler(request, ctx, store)
         elif method_request.method.upper() == 'CLIENTS_INTERESTS':
             request = ClientsInterestsRequest().from_dict(method_request.arguments)
+            request.validate()
+            return client_ids_request_handler(request, ctx, store)
         else:
             return '', INVALID_REQUEST
 
-        request.validate()
     except ValidationError as e:
         return str(e), INVALID_REQUEST
-
-    return request_handler(request, ctx, store)
-
-
-def request_handler(request, ctx, store):
-    if isinstance(request, OnlineScoreRequest):
-        return online_score_request_handler(request, ctx, store)
-    elif isinstance(request, ClientsInterestsRequest):
-        return client_ids_request_handler(request, ctx, store)
 
 
 def online_score_request_handler(request, ctx, store):
@@ -293,7 +286,7 @@ def online_score_request_handler(request, ctx, store):
 
 
 def client_ids_request_handler(request, ctx, store):
-    ctx['nclients'] = len(request.client_ids)
+    ctx['nclients'] = 0 if request.client_ids is None else len(request.client_ids)
     return {str(cid): scoring.get_interests(store, cid) for cid in request.client_ids}, OK
 
 
