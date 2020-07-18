@@ -1,5 +1,6 @@
 import pytest
 from mock import Mock, patch
+import fakeredis
 
 from scoring import ScoreStore
 import api
@@ -7,17 +8,17 @@ import api
 
 @pytest.fixture(scope="module")
 def unavailable_store():
-    mocked_redis = Mock()
-    mocked_redis.get.side_effect = ConnectionError
-    mocked_redis.set.side_effect = ConnectionError
+    server = fakeredis.FakeServer()
+    server.connected = False
+    mocked_redis = fakeredis.FakeStrictRedis(server=server)
     with patch('scoring.ScoreStore.create_store', return_value=mocked_redis):
         yield ScoreStore()
 
 
 @pytest.fixture(scope="module")
 def store():
-    mocked_redis = Mock()
-    mocked_redis.get.return_value = None
+    server = fakeredis.FakeServer()
+    mocked_redis = fakeredis.FakeStrictRedis(server=server)
     with patch('scoring.ScoreStore.create_store', return_value=mocked_redis):
         yield ScoreStore()
 

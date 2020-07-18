@@ -1,29 +1,7 @@
 import pytest
 from datetime import datetime, date
 
-from tests.fixtures import unavailable_store, store, fields_set
-from api import ValidationError, GENDERS, ClientsInterestsRequest, OnlineScoreRequest
-
-
-def test_get_raise_exception(unavailable_store):
-    with pytest.raises(ConnectionError):
-        unavailable_store.get('key')
-
-
-def test_cached_get_raise_exception(unavailable_store):
-    assert unavailable_store.cache_get('key') is None
-
-
-def test_cached_set_raise_exception(unavailable_store):
-    unavailable_store.cache_set('key', 1, 60 * 60)
-
-
-def test_store_ok(store):
-    assert (store.get('key') is None)
-
-
-def test_cached_store_ok(store):
-    assert (store.cache_get('key') is None)
+from api import ValidationError, GENDERS
 
 
 @pytest.mark.parametrize('value', [
@@ -178,55 +156,3 @@ def test_set_correct_gender_field(fields_set, value):
 def test_set_invalid_client_ids_field(fields_set, value):
     with pytest.raises(ValidationError):
         fields_set.client_ids_field = value
-
-
-@pytest.mark.parametrize('source_dict', [
-    {'client_ids': [1, 2, 3]},
-    {'client_ids': [1], 'date': None},
-    {'client_ids': [1], 'date': datetime.today().strftime('%d.%m.%Y')},
-    {'client_ids': [1, 2, 3], 'date': datetime.today().strftime('%d.%m.%Y')},
-])
-def test_correct_client_ids_request(fields_set, source_dict):
-    request = ClientsInterestsRequest.from_dict(source_dict)
-    request.validate()
-
-
-@pytest.mark.parametrize('source_dict', [
-    {'date': datetime.today().strftime('%d.%m.%Y')},
-    {'client_ids': [], 'date': None},
-    {'client_ids': [], 'date': datetime.today().strftime('%d.%m.%Y')}
-])
-def test_invalid_client_ids_request(fields_set, source_dict):
-    request = ClientsInterestsRequest.from_dict(source_dict)
-    with pytest.raises(ValidationError):
-        request.validate()
-
-
-@pytest.mark.parametrize('source_dict', [
-    {"phone": "79175002040", "email": "test@gmail.com"},
-    {"first_name": "John", "last_name": "Smith"},
-    {"gender": 1, "birthday": "01.01.2000"},
-    {"phone": "79175002040", "email": "test@gmail.com", "first_name": "John", "last_name": "Smith", "gender": 1,
-        "birthday": "01.01.2000"},
-])
-def test_correct_online_score_request(fields_set, source_dict):
-    request = OnlineScoreRequest.from_dict(source_dict)
-    request.validate()
-
-
-@pytest.mark.parametrize('source_dict', [
-    {},
-    {"phone": "79175002040"},
-    {"phone": "79175002040", "email": None},
-    {"phone": "79175002040", "email": ""},
-    {"phone": "79175002040", "first_name": "John"},
-    {"first_name": "John", "last_name": None},
-    {"first_name": "John", "last_name": ""},
-    {"phone": "79175002040", "birthday": "01.01.2000", "first_name": "John"},
-    {"phone": "79175002040", "gender": 1, "first_name": "John"},
-    {"phone": "79175002040", "gender": None, "birthday": "01.01.2000", "first_name": "John"},
-])
-def test_invalid_online_score_request(fields_set, source_dict):
-    request = OnlineScoreRequest.from_dict(source_dict)
-    with pytest.raises(ValidationError):
-        assert not request.validate().success

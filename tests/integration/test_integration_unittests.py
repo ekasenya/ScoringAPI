@@ -5,7 +5,6 @@ import unittest
 import pytest
 
 import api
-from tests.fixtures import store
 
 
 def cases(cases):
