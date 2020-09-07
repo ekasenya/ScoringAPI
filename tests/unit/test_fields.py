@@ -1,7 +1,9 @@
 import pytest
 from datetime import datetime, date
-
+from dateutil.relativedelta import relativedelta
 from api import ValidationError, GENDERS
+
+from tests.fixtures import fields_set
 
 
 @pytest.mark.parametrize('value', [
@@ -50,7 +52,12 @@ def test_set_correct_char_field(fields_set, value):
     date.today(),
     'test@gmail',
     '1test@gmail.com',
-    'test@@gmail.com'
+    'test@@gmail.com',
+    '@gmail.com',
+    'test@',
+    'test@.',
+    'test@.com',
+    'test@gmail.',
 ])
 def test_set_invalid_email_field(fields_set, value):
     with pytest.raises(ValidationError):
@@ -72,7 +79,12 @@ def test_set_correct_email_field(fields_set, value):
     {'key': 1},
     date.today(),
     '89032023032',
-    '790320230321'
+    '790320230321',
+    '79032023032abc',
+    '79032023032абв',
+    '7-903-202-30-32',
+    '7(903)202-30-32',
+    '79032023032#'
 ])
 def test_set_invalid_phone_field(fields_set, value):
     with pytest.raises(ValidationError):
@@ -92,7 +104,12 @@ def test_set_correct_phone_field(fields_set, value):
     [],
     {'key': 1},
     '01/01/2020',
-    '2020-01-01'
+    '2020-01-01',
+    '12.31.2020',
+    '01012020',
+    'date',
+    '01-Jan-2020',
+    '01.01.2020 00:00:00:0000'
 ])
 def test_set_invalid_date_field(fields_set, value):
     with pytest.raises(ValidationError):
@@ -113,7 +130,14 @@ def test_set_correct_date_field(fields_set, value):
     {'key': 1},
     '01/01/2020',
     '2020-01-01',
-    '.'.join(['01', '01', str(date.today().year - 75)])
+    '12.31.2020',
+    '01012020',
+    'date',
+    '01-Jan-2020',
+    '01.01.2020 00:00:00:0000',
+    '.'.join(['01', '01', str(date.today().year - 75)]),
+    (datetime.today() - relativedelta(years=70, days=1)).strftime('%d.%m.%Y'),
+    (datetime.today() + relativedelta(days=1)).strftime('%d.%m.%Y')
 ])
 def test_set_invalid_birthdate_field(fields_set, value):
     with pytest.raises(ValidationError):
@@ -121,7 +145,8 @@ def test_set_invalid_birthdate_field(fields_set, value):
 
 
 @pytest.mark.parametrize('value', [
-    '.'.join(['01', '01', str(date.today().year - 20)])
+    '.'.join(['01', '01', str(date.today().year - 20)]),
+    (datetime.today() - relativedelta(years=70)).strftime('%d.%m.%Y'),
 ])
 def test_set_correct_birthdate_field(fields_set, value):
     fields_set.date_field = value

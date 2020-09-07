@@ -6,7 +6,7 @@ Scoring service API. Validate and process HTTP requests.
 
 ### Requirements
 
-You need Python 3.0 or later
+You need Python 3.5+
 
 ### Using
 

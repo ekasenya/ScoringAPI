@@ -1,6 +1,7 @@
 import pytest
 from mock import Mock, patch
 import fakeredis
+from datetime import datetime
 
 from scoring import ScoreStore
 import api
@@ -23,6 +24,11 @@ def store():
         yield ScoreStore()
 
 
+@pytest.fixture(scope="module")
+def birth_date():
+    yield datetime.strptime("01.01.2000", "%d.%m.%Y")
+
+
 class FieldsSet:
     arguments_field = api.ArgumentsField()
     char_field = api.CharField()
@@ -36,5 +42,4 @@ class FieldsSet:
 
 @pytest.fixture(scope='module')
 def fields_set():
-    print('create fields_set')
     return FieldsSet()

@@ -4,6 +4,7 @@
 import abc
 import collections.abc
 from datetime import datetime
+from dateutil.relativedelta import relativedelta
 import hashlib
 import json
 import logging
@@ -118,7 +119,7 @@ class PhoneField(BaseField):
 
 
 class DateField(BaseField):
-    DATE_PATTERN = r'^\d{2}\.\d{2}\.\d{4}$'
+    DATE_PATTERN = r'^\d{2}\.(0[1-9]|1[0-1])\.\d{4}$'
 
     def check(self, value):
         super(DateField, self).check(value)
@@ -129,14 +130,20 @@ class DateField(BaseField):
     def __get__(self, instance, owner):
         result = super(DateField, self).__get__(instance, owner)
 
-        return datetime.strptime(result, '%d.%m.%Y') if result else None
+        return self.str_to_date(result) if result else None
+
+    @staticmethod
+    def str_to_date(value):
+        return datetime.strptime(value, '%d.%m.%Y')
 
 
 class BirthDayField(DateField):
     def check(self, value):
         super(BirthDayField, self).check(value)
 
-        if value != '' and int(re.split(r'[.]', value)[2]) < datetime.now().year - 70:
+        bdate = self.str_to_date(value)
+        if value != '' and \
+                (bdate < (datetime.now() - relativedelta(years=70)) or bdate > datetime.today()):
             raise ValidationError('{} is more than 70 years ago'.format(value))
 
 
